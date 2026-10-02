@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f5f5f7">
+<title>Голосовой редактор</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f5f5f7;color:#171717;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif}
+.app{max-width:720px;margin:auto;padding:calc(18px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom))}
+h1{font-size:28px;margin:8px 0 5px;font-weight:750}
+.sub{color:#777;margin:0 0 18px;font-size:15px}
+.card{background:#fff;border:1px solid #e5e5e7;border-radius:22px;padding:12px;box-shadow:0 5px 20px #00000008}
+textarea{display:block;width:100%;min-height:360px;border:0;outline:0;resize:none;font:18px/1.55 inherit;padding:10px;background:transparent;color:#171717}
+textarea::placeholder{color:#aaa}
+button{width:100%;border:0;border-radius:17px;padding:16px 12px;font-size:16px;font-weight:650;-webkit-tap-highlight-color:transparent}
+#mic{background:#171717;color:white}
+#clean{background:#ececf0;color:#171717;margin-top:10px}
+#copy{background:#e8f1ff;color:#1769d2;margin-top:10px}
+.status{text-align:center;color:#777;font-size:13px;min-height:20px;margin-top:12px}
+.on{background:#d92d20!important}
+.small{font-size:12px;color:#999;text-align:center;margin-top:15px;line-height:1.45}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>🎙️ Голосовой редактор</h1>
+<p class="sub">Говори свободно — потом очисти текст и скопируй его в ИИ.</p>
+<div class="card">
+<textarea id="text" placeholder="Здесь появится твой текст…"></textarea>
+<button id="mic">🎙️ Диктовать</button>
+<button id="clean">✨ Очистить текст</button>
+<button id="copy">📋 Скопировать</button>
+</div>
+<div class="status" id="status"></div>
+<div class="small">При первом нажатии iPhone попросит разрешение на микрофон. Разреши доступ.</div>
+</div>
+
+<script>
+const text=document.getElementById('text');
+const mic=document.getElementById('mic');
+const clean=document.getElementById('clean');
+const copy=document.getElementById('copy');
+const status=document.getElementById('status');
+
+let rec=null, listening=false, finalText='';
+
+function setStatus(s){status.textContent=s}
+
+function start(){
+  if(!window.isSecureContext){
+    setStatus('Открой эту страницу через HTTPS — микрофон не работает у локального файла.');
+    return;
+  }
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){
+    setStatus('В этом браузере голосовой ввод недоступен.');
+    return;
+  }
+  rec=new SR();
+  rec.lang='ru-RU';
+  rec.continuous=true;
+  rec.interimResults=true;
+  finalText=text.value.trim();
+
+  rec.onstart=()=>{
+    listening=true;
+    mic.textContent='⏹️ Остановить диктовку';
+    mic.classList.add('on');
+    setStatus('Слушаю…');
+  };
+  rec.onresult=(e)=>{
+    let interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript.trim();
+      if(e.results[i].isFinal){
+        finalText+=(finalText?' ':'')+t;
+      }else interim+=(interim?' ':'')+t;
+    }
+    text.value=finalText+(interim?(finalText?' ':'')+interim:'');
+    text.scrollTop=text.scrollHeight;
+  };
+  rec.onerror=(e)=>{
+    listening=false;
+    mic.textContent='🎙️ Диктовать';
+    mic.classList.remove('on');
+    if(e.error==='not-allowed') setStatus('Разреши доступ к микрофону для этого сайта.');
+    else setStatus('Ошибка распознавания: '+e.error);
+  };
+  rec.onend=()=>{
+    if(listening){
+      try{rec.start()}catch(e){}
+    }else{
+      mic.textContent='🎙️ Диктовать';
+      mic.classList.remove('on');
+      setStatus('');
+    }
+  };
+  try{rec.start()}catch(e){setStatus('Не удалось запустить микрофон. Попробуй ещё раз.')}
+}
+
+function stop(){
+  listening=false;
+  if(rec) rec.stop();
+}
+
+mic.onclick=()=>listening?stop():start();
+
+clean.onclick=()=>{
+  let s=text.value.replace(/\s+/g,' ').trim();
+  s=s.replace(/\b(э+|эм+|мм+|ну+|короче|типа)\b[\s,]*/gi,'');
+  s=s.replace(/\b(\S+)(\s+\1\b)+/gi,'$1');
+  s=s.replace(/\s+([,.!?])/g,'$1');
+  if(s)s=s[0].toUpperCase()+s.slice(1);
+  text.value=s;
+  finalText=s;
+  setStatus('Текст очищен ✓');
+  setTimeout(()=>setStatus(''),1500);
+};
+
+copy.onclick=async()=>{
+  if(!text.value.trim()){setStatus('Сначала напиши текст.');return}
+  try{
+    await navigator.clipboard.writeText(text.value);
+  }catch(e){
+    text.focus();text.select();document.execCommand('copy');
+  }
+  setStatus('Скопировано ✓');
+  setTimeout(()=>setStatus(''),1500);
+};
+</script>
+</body>
+</html>
